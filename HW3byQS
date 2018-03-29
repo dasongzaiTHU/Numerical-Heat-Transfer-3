@@ -1,0 +1,63 @@
+program main
+integer i,j,node,scale
+real XL,rho,Gamma,u,ae,aw,ap,ditx,p
+real Phi1(0:6),Phi2(0:6)
+real,allocatable::a(:),b(:),c(:)
+!real a(0:6),b(0:6),c(0:6)
+! a是当前，b是下步，c是真值 
+XL = 1.0
+rho = 1
+Gamma = 0.1
+u = 2.5
+node = 5
+allocate(a(0:node+1))
+allocate(b(0:node+1))
+allocate(c(0:node+1))
+ditx = XL / node
+b = 0
+b(0)=1
+b(node+1)=0
+j = 1
+do while (j<1000)
+    a = b
+    !print*,a
+    do i =1,node
+        !ae = Gamma/ditx - rho * u /2
+        !aw = Gamma/ditx + rho * u /2
+        !ae = Gamma/ditx + max(-rho * u /2,0.0)
+        !aw = Gamma/ditx + max(rho * u /2,0.0)
+        ae = max(-rho * u,Gamma/ditx - rho * u /2,0.0)
+        aw = max(rho * u,Gamma/ditx + rho * u /2,0.0)
+        ap = ae + aw - ( rho * u- rho * u)
+        b(i) = aw/ap * a(i-1) + ae/ap * a(i+1)
+    end do 
+    !print*,b
+    j=j+1
+
+end do 
+c=0
+c(0)=1
+c(node+1)=0
+do i =1,node
+    c(i) = c(0)+(c(node+1)-c(0))*(exp(rho*u*(ditx*i -ditx /2 )/Gamma)-1)/(exp(rho*u*XL/Gamma)-1)
+    !print*,ditx*i -ditx /2 
+end do
+p=rho * u/Gamma*ditx
+Phi1=0
+Phi1(0)=1
+Phi2=Phi1
+scale = node / 5
+j=1
+do i =1,node
+    if (mod(i,scale) == 0) Then
+        Phi1(j)=b(i)
+        Phi2(j)=c(i)
+        j=j+1
+    end if
+end do
+!print*, p
+print*,b
+print*,c
+!print*, Phi1
+!print*, Phi2
+end
