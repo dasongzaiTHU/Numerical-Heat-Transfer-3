@@ -1,63 +1,150 @@
-program main
-integer i,j,node,scale
-real XL,rho,Gamma,u,ae,aw,ap,ditx,p
-real Phi1(0:6),Phi2(0:6)
-real,allocatable::a(:),b(:),c(:)
-!real a(0:6),b(0:6),c(0:6)
-! a是当前，b是下步，c是真值 
-XL = 1.0
-rho = 1
-Gamma = 0.1
-u = 2.5
-node = 5
-allocate(a(0:node+1))
-allocate(b(0:node+1))
-allocate(c(0:node+1))
-ditx = XL / node
-b = 0
-b(0)=1
-b(node+1)=0
-j = 1
-do while (j<1000)
-    a = b
-    !print*,a
-    do i =1,node
-        !ae = Gamma/ditx - rho * u /2
-        !aw = Gamma/ditx + rho * u /2
-        !ae = Gamma/ditx + max(-rho * u /2,0.0)
-        !aw = Gamma/ditx + max(rho * u /2,0.0)
-        ae = max(-rho * u,Gamma/ditx - rho * u /2,0.0)
-        aw = max(rho * u,Gamma/ditx + rho * u /2,0.0)
-        ap = ae + aw - ( rho * u- rho * u)
-        b(i) = aw/ap * a(i-1) + ae/ap * a(i+1)
-    end do 
-    !print*,b
-    j=j+1
-
-end do 
-c=0
-c(0)=1
-c(node+1)=0
-do i =1,node
-    c(i) = c(0)+(c(node+1)-c(0))*(exp(rho*u*(ditx*i -ditx /2 )/Gamma)-1)/(exp(rho*u*XL/Gamma)-1)
-    !print*,ditx*i -ditx /2 
-end do
-p=rho * u/Gamma*ditx
-Phi1=0
-Phi1(0)=1
-Phi2=Phi1
-scale = node / 5
-j=1
-do i =1,node
-    if (mod(i,scale) == 0) Then
-        Phi1(j)=b(i)
-        Phi2(j)=c(i)
-        j=j+1
-    end if
-end do
-!print*, p
-print*,b
-print*,c
-!print*, Phi1
-!print*, Phi2
-end
+program SteadyConvDiff  
+integer,parameter::N=5                        !网格数  
+real L,rho,GAMMA,deltax,u                    !流场参数  
+real F,D,P                                   !Pelect数  
+real,dimension(2:(N+1))::Fw,Fe,Dw,De          !求系数中间变量  
+real,dimension(2:(N+1))::AW,AE,AP             !系数  
+real,dimension(1:(N+2))::x                    !结点坐标  
+real,dimension(1:(N+2))::phi                  !数值解  
+real,dimension(1:(N+2))::phi0                 !解析解  
+real,dimension(1:N)::a,b,c,ff                 !方程组系数  
+real,dimension(1:N,1:N)::aa                   !系数矩阵  
+real,dimension(1:N)::beta,mm,ll,yy,xx         !追赶法解方程组的中间变量和结果  
+integer::i,j  
+integer::snm           !serial number of case/method   
+snm=1                   !1,2,3分别对应中心，迎风，混合格式  
+  
+!变量输入  
+u=2.5  
+  
+!给定流场参数  
+L=1  
+rho=1.0  
+GAMMA=0.1  
+deltax=L/N  
+  
+!计算pelcet数  
+F=rho*u  
+D=GAMMA/deltax  
+P=F/D  
+  
+!给定边界条件  
+x(1)=0.0  
+x(N+2)=L  
+phi(1)=1.0  
+phi(N+2)=0.0  
+  
+!求解析解phi0  
+phi0(1)=phi(1)  
+phi0(N+2)=phi(N+2)  
+do i=2,(N+1)  
+    x(i)=((i-2)+0.5)*deltax  
+    phi0(i)=((exp(F*x(i)/GAMMA)-1.0)/(exp(F*L/GAMMA)-1.0))*(phi0(N+2)-phi0(1))+phi0(1)  
+end do  
+print*, phi0  
+  
+!求数值解  
+!求Fw,Fe,Dw,De  
+do i=2,(N+1)  
+    Fw(i)=F  
+    Fe(i)=F  
+    Dw(i)=D  
+    De(i)=D  
+end do  
+Dw(2)=D/0.5  !边界处的ditx减半  
+De(N+1)=D/0.5  
+  
+!求AW,AE  
+select case (snm)  
+case (1)                               !中心差分格式  
+    do i=2,(N+1)  
+        AW(i)=Dw(i)+0.5*Fw(i)  
+        AE(i)=De(i)-0.5*Fe(i)  
+    end do  
+    AW(2)=Dw(2)+Fw(2)       !边界处单独处理  
+    AE(N+1)=De(N+1)-Fe(N+1)  
+  
+case (2)                               !迎风格式  
+    do i=2,(N+1)  
+        AW(i)=Dw(i)+AMAX1(Fw(i),0.0)  
+        AE(i)=De(i)+AMAX1(-Fe(i),0.0)  
+    end do  
+  
+case (3)                               !混合格式  
+    if (p>2 .OR. p<-2) then                 !迎风  
+        do i=2,(N+1)  
+            AW(i)=Dw(i)+AMAX1(Fw(i),0.0)  
+            AE(i)=De(i)+AMAX1(-Fe(i),0.0)  
+        end do  
+    else                                    !中心差分  
+        do i=2,(N+1)  
+            AW(i)=Dw(i)+0.5*Fw(i)  
+            AE(i)=De(i)-0.5*Fe(i)  
+        end do  
+            AW(2)=Dw(2)+Fw(2)  
+            AE(N+1)=De(N+1)-Fe(N+1)  
+    end if  
+case default  
+    print *,"ERROR!"  
+    stop  
+end select  
+!求AP  
+do i=2,(N+1)  
+   AP(i)=AW(i)+AE(i)+(Fe(i)-Fw(i))  
+end do  
+  
+!构造phi的三对角线性方程组  
+!求得A*X=B系数矩阵  
+do j=1,N                 !赋初值  
+    do i=1,N  
+        aa(i,j)=0  
+    end do  
+end do  
+  
+do i=2,N                 !求系数矩阵A  
+    a(i)=-AW(i+1)  
+    aa(i,i-1)=a(i)  
+end do  
+do i=1,N-1  
+    c(i)= -AE(i+1)  
+    aa(i,i+1)=c(i)  
+end do  
+do i=1,N  
+    b(i)=AP(i+1)  
+    aa(i,i)=b(i)  
+    ff(i)=0  
+end do  
+ff(1)=AW(2)*phi(1)   !边界为B  
+ff(N)=AE(N+1)*phi(N+2)  
+  
+do i=1,N  
+    !print*, (aa(i,j),j=1,N)  
+end do  
+  
+do i=1,N  
+   !print*, ff(i)  
+end do  
+  
+!追赶法求解三对角线性方程组  
+beta(1)=c(1)/b(1)                !预备  
+yy(1)=ff(1)/b(1)  
+do i=2,N-1  
+    mm(i)=b(i)-a(i)*beta(i-1)  
+    beta(i)=c(i)/mm(i)  
+end do  
+do i=2,N                         !追  
+    mm(i)=b(i)-a(i)*beta(i-1)  
+    ll(i)=ff(i)-a(i)*yy(i-1)  
+    yy(i)=ll(i)/mm(i)  
+end do  
+xx(N)=yy(N)                      !赶  
+do i=N-1,1,-1  
+    xx(i)=yy(i)-beta(i)*xx(i+1)  
+end do  
+  
+!求得phi的数值解  
+do i=2,N+1  
+    phi(i)=xx(i-1)  
+end do  
+print*,phi  
+end  
