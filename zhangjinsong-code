@@ -1,0 +1,72 @@
+program main
+    implicit none
+    parameter N=5 !五个节点
+    integer i,j,k !迭代字母
+    real gamma,L,dx,rho,u !gamma是扩散系数,L是长度,dx是微元长度,rho是密度,u是速度
+    real P(N,N), FAI(N),b(N),aW(N),aE(N),aP(N),x(N),y(N) 
+    !A(N,N), phi(N)是变量φ,b(N),r(N),y(N)是解三对角矩阵的中间变量，aW(N),aE(N),aP(N)是其他系数
+    real Fw,Fe,Dw,De !界面流量和扩散阻力的倒数
+    
+    L=1.0 !长度为1.0米
+    gamma=0.1 !gamma是相应于φ的广义扩散系数，单位是kg/(m.s)
+    rho=1.0 !密度是1.0kg/m3
+    u=0.1 !速度为2.5m/s
+    dx=L/N !微元控制体的长度是总长度/总节点数，为1m/5=0.2m
+    Fw=rho*u;Fe=rho*u 
+    !通过w界面的流量的定义，Fw=1.0*0.1=0.1kg/(m2.s) 通过e界面的流量的定义，Fe=1.0*0.1=0.1kg/(m2.s)
+    Dw=gamma/dx;De=gamma/dx 
+    !通过w界面上单位面积扩散阻力的倒数，Dw=0.1/0.2=0.5kg/(m2.s) 
+    !通过e界面上单位面积扩散阻力的倒数，De=0.1/0.2=0.5kg/(m2.s)
+    
+    do i=1,N !从左边到右边N个点
+        aW(i)=(Dw+Fw/2) !一维对流扩散方程的系数aW的定义
+        aE(i)=(De-Fe/2) !一维对流扩散方程的系数aE的定义
+    enddo
+    aW(1)=0. !规定左边边界的系数为0
+    aE(N)=0. !规定右边边界的系数为0
+    
+    do i=1,N !从左边到右边N个点
+        aP(i)=aW(i)+aE(i) !一维对流扩散方程的系数aP的定义
+    enddo
+    
+    do i=1,N !从左边到右边N个点
+        do j=1,N !从上边到下边N个点
+            P(i,j)=0. !A矩阵初始化整个矩阵为0
+        enddo
+    enddo
+    
+    do i=2,N-1 !从第2个点到第N-1个点，边界内的所有点
+        P(i,i)=aP(i) !构造三对角矩阵中间
+        P(i-1,i)=-aW(i) !构造三对角矩阵上面
+        P(i+1,i)=-aE(i) !构造三对角矩阵下面
+    enddo
+    
+    P(1,1)=aP(1)+(2*Dw+Fw)  !补充三对角矩阵的第一个元素
+    P(2,1)=-aE(1) !补充三对角矩阵的左下角元素
+    P(N-1,N)=-aW(N) !补充三对角矩阵的右上角元素
+    P(N,N)=aP(N)+(2*De-Fe) !补充三对角矩阵的最后一个元素
+    
+    open(100,file='P') !与给定部件联结的文件的名称为A
+    
+    do i=1,N !从左边到右边N个点
+        b(i)=0 !b矩阵初始化为0
+    enddo
+    b(1)=2*Dw+Fw !给定b(1)
+    x(1)=-aE(1)/P(1,1) !给定r(1)
+    y(1)=b(1)/P(1,1) !给定y(1)
+    
+    !解三对角矩阵
+    do k=2,N !从第2个点到第N个点
+    x(k)=-aE(k)/(P(k,k)-x(k-1)*(-aW(k)))
+    y(k)=(b(k)-y(k-1)*(-aW(k)))/(P(k,k)-x(k-1)*(-aW(k)))
+    enddo
+    FAI(N)=y(N) !φ的第N个值为y(N)
+    
+    do k=N-1,1,-1 
+        FAI(k)=y(k)-x(k)*FAI(k+1) !φ的其他值
+    enddo
+    
+    write(100,*) P
+    print *,phi
+    pause
+end
